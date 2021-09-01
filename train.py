@@ -6,15 +6,39 @@ import tqdm
 from utils.loss import KnowledgeDistillationLoss, BCEWithLogitsLossWithIgnoreIndex, \
     UnbiasedKnowledgeDistillationLoss, UnbiasedCrossEntropy, IcarlLoss
 from torch.cuda import amp
+from segmentation_module import make_model
+import tasks
+import utils
+from torch.nn.parallel import DistributedDataParallel
+import os.path as osp
 
 
 class Trainer:
-    def __init__(self, model, model_old, device, opts, classes=None):
-
-        self.model_old = model_old
-        self.model = model
+    def __init__(self, logger, device, opts):
+        self.logger = logger
         self.device = device
+        self.opts = opts
         self.scaler = amp.GradScaler()
+
+        classes = tasks.get_per_task_classes(opts.dataset, opts.task, opts.step)
+        self.model = make_model(opts, classes=classes)
+        # logger.debug(model)
+        # logger.info(f"Backbone: {opts.backbone}")
+        # logger.info(f"[!] Model made with{'out' if opts.no_pretrained else ''} pre-trained")
+
+        if opts.step == 0:  # if step 0, we don't need to instance the model_old
+            self.model_old = None
+        else:  # instance model_old
+            self.model_old = make_model(opts, classes=tasks.get_per_task_classes(opts.dataset, opts.task, opts.step - 1))
+            self.model_old.to(self.device)
+            # freeze old model and set eval mode
+            for par in self.model_old.parameters():
+                par.requires_grad = False
+            self.model_old.eval()
+
+        self.optimizer, self.scheduler = self.get_optimizer(opts)
+
+        self.distribute(opts)
 
         if classes is not None:
             new_classes = classes[-1]
@@ -36,11 +60,11 @@ class Trainer:
 
         # ILTSS
         self.lde = opts.loss_de
-        self.lde_flag = self.lde > 0. and model_old is not None
+        self.lde_flag = self.lde > 0. and self.model_old is not None
         self.lde_loss = nn.MSELoss()
 
         self.lkd = opts.loss_kd
-        self.lkd_flag = self.lkd > 0. and model_old is not None
+        self.lkd_flag = self.lkd > 0. and self.model_old is not None
         if opts.unkd:
             self.lkd_loss = UnbiasedKnowledgeDistillationLoss(alpha=opts.alpha)
         else:
@@ -50,8 +74,8 @@ class Trainer:
         self.icarl_combined = False
         self.icarl_only_dist = False
         if opts.icarl:
-            self.icarl_combined = not opts.icarl_disjoint and model_old is not None
-            self.icarl_only_dist = opts.icarl_disjoint and model_old is not None
+            self.icarl_combined = not opts.icarl_disjoint and self.model_old is not None
+            self.icarl_only_dist = opts.icarl_disjoint and self.model_old is not None
             if self.icarl_combined:
                 self.licarl = nn.BCEWithLogitsLoss(reduction='mean')
                 self.icarl = opts.icarl_importance
@@ -61,13 +85,48 @@ class Trainer:
 
         self.ret_intermediate = self.lde
 
-    def train(self, cur_epoch, optim, train_loader, scheduler=None, print_int=10, logger=None, rank=0):
-        """Train and return epoch loss"""
-        logger.info("Epoch %d, lr = %f" % (cur_epoch, optim.param_groups[0]['lr']))
+    def get_optimizer(self, opts):
+        params = []
+        if not opts.freeze:
+            params.append({"params": filter(lambda p: p.requires_grad, self.model.body.parameters()),
+                           'weight_decay': opts.weight_decay})
 
+        params.append({"params": filter(lambda p: p.requires_grad, self.model.head.parameters()),
+                       'weight_decay': opts.weight_decay})
+
+        params.append({"params": filter(lambda p: p.requires_grad, self.model.cls.parameters()),
+                       'weight_decay': opts.weight_decay})
+
+        optimizer = torch.optim.SGD(params, lr=opts.lr, momentum=0.9, nesterov=True)
+
+        if opts.lr_policy == 'poly':
+            scheduler = utils.PolyLR(optimizer, max_iters=opts.max_iters, power=opts.lr_power)
+        elif opts.lr_policy == 'step':
+            scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=opts.lr_decay_step,
+                                                        gamma=opts.lr_decay_factor)
+        else:
+            raise NotImplementedError
+
+        return optimizer, scheduler
+
+    def distribute(self, opts):
+        # if self.model_old is not None:
+        #    self.model_old = DistributedDataParallel(self.model_old.to(self.device), device_ids=[opts.device_id],
+        #                                             output_device=opts.device_id, find_unused_parameters=False)
+
+        self.model = DistributedDataParallel(self.model.to(self.device), device_ids=[opts.device_id],
+                                             output_device=opts.device_id, find_unused_parameters=False)
+
+    def train(self, cur_epoch, train_loader, print_int=10):
+        """Train and return epoch loss"""
+        optim = self.optimizer
+        scheduler = self.scheduler
         device = self.device
         model = self.model
         criterion = self.criterion
+        logger = self.logger
+
+        logger.info("Epoch %d, lr = %f" % (cur_epoch, optim.param_groups[0]['lr']))
 
         epoch_loss = 0.0
         reg_loss = 0.0
@@ -79,7 +138,7 @@ class Trainer:
 
         train_loader.sampler.set_epoch(cur_epoch)
 
-        if rank == 0:
+        if distributed.get_rank() == 0:
             tq = tqdm.tqdm(total=len(train_loader))
             tq.set_description("Epoch %d, lr = %f" % (cur_epoch, optim.param_groups[0]['lr']))
         else:
@@ -103,10 +162,12 @@ class Trainer:
                 if not self.icarl_only_dist:
                     loss = criterion(outputs, labels)  # B x H x W
                 else:
+                    # ICaRL loss -- unique CE+KD
                     loss = self.licarl(outputs, labels, torch.sigmoid(outputs_old))
 
                 loss = loss.mean()  # scalar
 
+                # xxx ICARL DISTILLATION
                 if self.icarl_combined:
                     # tensor.narrow( dim, start, end) -> slice tensor from start to end in the specified dim
                     n_cl_old = outputs_old.shape[1]
@@ -171,11 +232,12 @@ class Trainer:
 
         return (epoch_loss, reg_loss)
 
-    def validate(self, loader, metrics, ret_samples_ids=None, logger=None):
+    def validate(self, loader, metrics, ret_samples_ids=None):
         """Do validation and return specified samples"""
         metrics.reset()
         model = self.model
         device = self.device
+
         model.eval()
 
         ret_samples = []
@@ -204,8 +266,42 @@ class Trainer:
 
         return score, ret_samples
 
-    def state_dict(self):
-        pass
+    def load_step_ckpt(self, path):
+        # generate model from path
+        if osp.exists(path):
+            step_checkpoint = torch.load(path, map_location="cpu")
+            self.model.load_state_dict(step_checkpoint['model_state'], strict=False)  # False for incr. classifiers
+            if self.opts.init_balanced:
+                # implement the balanced initialization (new cls has weight of background and bias = bias_bkg - log(N+1)
+                self.model.module.init_new_classifier(self.device)
+            # Load state dict from the model state dict, that contains the old model parameters
+            new_state = {}
+            for k, v in step_checkpoint['model_state'].items():
+                new_state[k[7:]] = v
+            self.model_old.load_state_dict(new_state, strict=True)  # Load also here old parameters
+            self.logger.info(f"[!] Previous model loaded from {path}")
+            # clean memory
+            del step_checkpoint['model_state']
+        elif self.opts.debug:
+            self.logger.info(f"[!] WARNING: Unable to find of step {self.opts.step - 1}! "
+                             f"Do you really want to do from scratch?")
+        else:
+            raise FileNotFoundError(path)
 
-    def load_state_dict(self, state):
-        pass
+    def load_ckpt(self, path):
+        opts = self.opts
+        assert osp.isfile(path), f"Error, ckpt not found in {path}"
+
+        checkpoint = torch.load(opts.ckpt, map_location="cpu")
+        self.model.load_state_dict(checkpoint["model_state"], strict=True)
+        self.optimizer.load_state_dict(checkpoint["optimizer_state"])
+        self.scheduler.load_state_dict(checkpoint["scheduler_state"])
+        if "scaler" in checkpoint:
+            self.scaler.load_state_dict(checkpoint["scaler"])
+        cur_epoch = checkpoint["epoch"] + 1
+        best_score = checkpoint['best_score']
+        self.logger.info("[!] Model restored from %s" % opts.ckpt)
+        # if we want to resume training, resume trainer from checkpoint
+        del checkpoint
+
+        return cur_epoch, best_score
