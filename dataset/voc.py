@@ -54,7 +54,9 @@ class VOCSegmentation(data.Dataset):
     def __init__(self,
                  root,
                  train=True,
-                 transform=None):
+                 transform=None,
+                 indices=None
+                 ):
 
         is_aug = True
         self.root = os.path.expanduser(root)
@@ -91,6 +93,7 @@ class VOCSegmentation(data.Dataset):
 
         # REMOVE FIRST SLASH OTHERWISE THE JOIN WILL start from root
         self.images = [(os.path.join(voc_root, x[0][1:]), os.path.join(voc_root, x[1][1:])) for x in file_names]
+        self.indices = indices if indices is not None else np.arange(len(self.images))
 
     def __getitem__(self, index):
         """
@@ -99,15 +102,15 @@ class VOCSegmentation(data.Dataset):
         Returns:
             tuple: (image, target) where target is the image segmentation.
         """
-        img = Image.open(self.images[index][0]).convert('RGB')
-        target = Image.open(self.images[index][1])
+        img = Image.open(self.images[self.indices[index]][0]).convert('RGB')
+        target = Image.open(self.images[self.indices[index]][1])
         if self.transform is not None:
             img, target = self.transform(img, target)
 
         return img, target
 
     def __len__(self):
-        return len(self.images)
+        return len(self.indices)
 
 
 class VOCSegmentationScribble(data.Dataset):
@@ -285,6 +288,6 @@ class VOCSegmentationPoint(data.Dataset):
 
 
 class VOCSegmentationIncremental(IncrementalSegmentationDataset):
-    def make_dataset(self, root, train):
-        full_voc = VOCSegmentation(root, train, transform=None)
+    def make_dataset(self, root, train, indices):
+        full_voc = VOCSegmentation(root, train, indices=indices, transform=None)
         return full_voc

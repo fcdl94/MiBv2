@@ -14,11 +14,19 @@ class IncrementalSegmentationDataset(data.Dataset):
                  transform=None,
                  idxs_path=None,
                  masking=True,
-                 overlap=True,
                  masking_value=0,
                  step=0):
 
-        self.full_data = self.make_dataset(root, train)
+        # take index of images with at least one class in labels and all classes in labels+labels_old+[255]
+        if train:
+            if idxs_path is not None and os.path.exists(idxs_path):
+                idxs = np.load(idxs_path)
+            else:
+                raise FileNotFoundError(f"Please, add the traning spilt in {idxs_path}.")
+        else:  # In both test and validation we want to use all data available (even if some images are all bkg)
+            idxs = None
+
+        self.dataset = self.make_dataset(root, train, indices=idxs)
         self.transform = transform
 
         self.step_dict = step_dict
@@ -33,19 +41,6 @@ class IncrementalSegmentationDataset(data.Dataset):
         else:
             self.labels = list(step_dict[step])
         self.labels_old = [lbl for s in range(step) for lbl in step_dict[s]]
-
-        # take index of images with at least one class in labels and all classes in labels+labels_old+[255]
-        if train:
-            if idxs_path is not None and os.path.exists(idxs_path):
-                idxs = np.load(idxs_path).tolist()
-            else:
-                raise FileNotFoundError(f"Please, add the traning spilt in {idxs_path}.")
-                # idxs = list(range(len(self.full_data)))
-                # filter_images(self.full_data, labels, labels_old, overlap=overlap)
-                # if idxs_path is not None:  # and distributed.get_rank() == 0:
-                #     np.save(idxs_path, np.array(idxs, dtype=int))
-        else:  # In both test and validation we want to use all data available (even if some images are all bkg)
-            idxs = np.arange(len(self.full_data)).tolist()
 
         self.masking_value = masking_value
         self.masking = masking
@@ -68,9 +63,7 @@ class IncrementalSegmentationDataset(data.Dataset):
         target_transform = LabelTransform(mapping)
 
         # make the subset of the dataset
-        self.dataset = Subset(self.full_data, idxs, transform, target_transform)
         self.target_transform = target_transform
-
         self.indices = list(idxs)
 
     def set_up_void_test(self):
@@ -84,6 +77,8 @@ class IncrementalSegmentationDataset(data.Dataset):
 
         if index < len(self.indices):
             img, lbl = self.dataset[index]
+            img, lbl = self.transform(img, lbl)
+            lbl = self.target_transform(lbl)
             return img, lbl
         else:
             raise ValueError("absolute value of index should not exceed dataset length")
@@ -107,7 +102,7 @@ class IncrementalSegmentationDataset(data.Dataset):
     def __len__(self):
         return len(self.indices)
 
-    def make_dataset(self, root, train):
+    def make_dataset(self, root, train, indices):
         raise NotImplementedError
 
 

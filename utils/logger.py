@@ -138,10 +138,7 @@ class Logger:
         self.logdir_results = os.path.join("logs", "results")
         self.summary = summary and rank == 0
         if summary:
-            if type == 'tensorboardX':
-                import tensorboardX
-                self.logger = tensorboardX.SummaryWriter(logdir)
-            elif type == "torch":
+            if type == "torch":
                 from torch.utils.tensorboard import SummaryWriter
                 self.logger = SummaryWriter(logdir)
             else:

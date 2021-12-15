@@ -1,0 +1,8 @@
+torch~=1.8.1
+numpy~=1.20.1
+torchvision~=0.9.1
+wandb~=0.12.7
+Pillow~=8.2.0
+matplotlib~=3.3.4
+tqdm~=4.59.0
+inplace_abn~=1.1.0

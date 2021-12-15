@@ -4,11 +4,12 @@ import torch.nn.functional as functional
 
 import inplace_abn
 from inplace_abn import InPlaceABNSync, InPlaceABN, ABN
+from modules.custom_bn import ABR, InPlaceABR
 
 from functools import partial, reduce
 
 import models
-from modules import DeeplabV3
+from modules import DeeplabV3, DeeplabV2
 
 
 def make_model(opts, classes=None):
@@ -18,23 +19,43 @@ def make_model(opts, classes=None):
         norm = partial(InPlaceABN, activation="leaky_relu", activation_param=.01)
     elif opts.norm_act == 'abn':
         norm = partial(ABN, activation="leaky_relu", activation_param=.01)
+    elif opts.norm_act == 'abr':
+        norm = partial(ABR, activation="leaky_relu", activation_param=.01)
+    elif opts.norm_act == 'iabr':
+        norm = partial(InPlaceABR, activation="leaky_relu", activation_param=.01)
     else:
-        norm = nn.BatchNorm2d  # not synchronized, can be enabled with apex
+        raise NotImplementedError
 
     body = models.__dict__[f'net_{opts.backbone}'](norm_act=norm, output_stride=opts.output_stride)
     if not opts.no_pretrained:
-        pretrained_path = f'pretrained/{opts.backbone}_{opts.norm_act}.pth.tar'
+        pretrained_path = f'pretrained/{opts.backbone}_iabn_sync.pth.tar'  # Use always iabn_sync model
         pre_dict = torch.load(pretrained_path, map_location='cpu')
-        del pre_dict['state_dict']['classifier.fc.weight']
-        del pre_dict['state_dict']['classifier.fc.bias']
 
-        body.load_state_dict(pre_dict['state_dict'])
+        new_state = {}
+        for k, v in pre_dict['state_dict'].items():
+            if "module" in k:
+                new_state[k[7:]] = v
+            else:
+                new_state[k] = v
+
+        if 'classifier.fc.weight' in new_state:
+            del new_state['classifier.fc.weight']
+            del new_state['classifier.fc.bias']
+
+        body.load_state_dict(new_state)
         del pre_dict  # free memory
+        del new_state
 
     head_channels = 256
-
-    head = DeeplabV3(body.out_channels, head_channels, 256, norm_act=norm,
-                     out_stride=opts.output_stride, pooling_size=opts.pooling)
+    if opts.deeplab == 'v3':
+        head = DeeplabV3(body.out_channels, head_channels, 256, norm_act=norm,
+                         out_stride=opts.output_stride, pooling_size=opts.pooling,
+                         pooling=not opts.no_pooling, last_relu=opts.relu)
+    elif opts.deeplab == 'v2':
+        head = DeeplabV2(body.out_channels, head_channels, norm_act=norm,
+                         out_stride=opts.output_stride, last_relu=opts.relu)
+    else:
+        head = nn.Conv2d(body.out_channels, head_channels, kernel_size=1)
 
     if classes is not None:
         model = IncrementalSegmentationModule(body, head, head_channels, classes=classes)

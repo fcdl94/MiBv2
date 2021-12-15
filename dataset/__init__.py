@@ -11,7 +11,8 @@ def get_dataset(opts):
     """
 
     train_transform = transform.Compose([
-        transform.RandomResizedCrop(opts.crop_size, (0.5, 2)),
+        transform.RandomResizedCrop(opts.crop_size, (0.5, 1)),
+        # transform.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1),
         # this is like scaling the orig image -> Scale_{RRC} =  Crop_size / (Img_size * Scale_{R+C})
         transform.RandomHorizontalFlip(),
         transform.ToTensor(),
@@ -19,8 +20,7 @@ def get_dataset(opts):
                             std=[0.229, 0.224, 0.225]),
     ])
     val_transform = transform.Compose([
-        transform.Resize(size=opts.crop_size),
-        transform.CenterCrop(size=opts.crop_size),
+        transform.PadCenterCrop(size=opts.crop_size_val, pad_if_needed=True),
         transform.ToTensor(),
         transform.Normalize(mean=[0.485, 0.456, 0.406],
                             std=[0.229, 0.224, 0.225]),
@@ -50,12 +50,12 @@ def get_dataset(opts):
 
     train_dst = dataset(root=opts.data_root, step_dict=step_dict, train=True, transform=train_transform,
                         idxs_path=path_base_train + f"/train-{opts.step}.npy", masking_value=masking_value,
-                        masking=not opts.no_mask, overlap=opts.overlap, step=opts.step)
+                        masking=not opts.no_mask, step=opts.step)
 
     # Val is masked with 0 when label is not known or is old (masking=True, masking_value=0)
     val_dst = dataset(root=opts.data_root, step_dict=step_dict, train=False, transform=val_transform,
                       idxs_path=path_base + f"/val-{opts.step}.npy", masking_value=masking_value,
-                      masking=not opts.no_mask, overlap=True, step=opts.step)
+                      masking=not opts.no_mask, step=opts.step)
 
     # Test is masked with 255 for labels not known and the class for old (masking=False, masking_value=255)
     image_set = 'train' if opts.val_on_trainset else 'val'
