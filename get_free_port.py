@@ -1,5 +1,5 @@
-import socket
 import random
+import socket
 
 
 def next_free_port( port=1994, max_port=65535):

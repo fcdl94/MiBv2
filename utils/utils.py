@@ -1,6 +1,6 @@
-from torchvision.transforms.functional import normalize
-import torch.nn as nn
 import numpy as np
+import torch.nn as nn
+from torchvision.transforms.functional import normalize
 
 
 def denormalize(tensor, mean, std):

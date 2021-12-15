@@ -1,6 +1,7 @@
-import torch
-import numpy as np
 import bisect
+
+import numpy as np
+import torch
 
 
 def image_labels(dataset):

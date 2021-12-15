@@ -1,13 +1,11 @@
-import os
-import torch.utils.data as data
-from .dataset import IncrementalSegmentationDataset
-import torchvision as tv
-import numpy as np
-from .utils import Subset, filter_images, ConcatDataset
-from torch import distributed
 import json
+import os
 
+import numpy as np
+import torch.utils.data as data
 from PIL import Image
+
+from .dataset import IncrementalSegmentationDataset
 
 classes = {
     0: 'background',

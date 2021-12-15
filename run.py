@@ -1,18 +1,18 @@
-import utils
-import argparser
 import os
-from utils.logger import WandBLogger
-from torch.utils.data.distributed import DistributedSampler
+import random
 
 import numpy as np
-import random
 import torch
-from torch.utils import data
 from torch import distributed
+from torch.utils import data
+from torch.utils.data.distributed import DistributedSampler
 
+import argparser
+import utils
 from dataset import get_dataset
 from metrics import StreamSegMetrics
 from train import Trainer
+from utils.logger import WandBLogger
 
 
 def save_ckpt(path, trainer, epoch, best_score):

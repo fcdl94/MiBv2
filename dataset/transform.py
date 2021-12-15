@@ -1,13 +1,13 @@
+import collections
+import math
+import numbers
+import random
+import warnings
+
+import numpy as np
 import torch
 import torchvision.transforms.functional as F
 from torchvision.transforms import InterpolationMode
-import random
-import numbers
-import numpy as np
-import collections
-from PIL import Image
-import warnings
-import math
 
 _pil_interpolation_to_str = {
     InterpolationMode.NEAREST: 'NEAREST',

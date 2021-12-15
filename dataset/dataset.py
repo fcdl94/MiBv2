@@ -1,9 +1,8 @@
 import os
+
+import numpy as np
 import torch.utils.data as data
 from torch import from_numpy
-import numpy as np
-
-from .utils import Subset, filter_images, ConcatDataset
 
 
 class IncrementalSegmentationDataset(data.Dataset):

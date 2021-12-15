@@ -1,8 +1,6 @@
-from torch import nn
 import torch
+from torch import nn
 from torch.nn import functional as F
-import numpy as np
-from torch.nn import Parameter
 
 
 class IncrementalClassifier(nn.Module):

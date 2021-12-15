@@ -1,14 +1,10 @@
 import os
-import torch.utils.data as data
-from torch import distributed
-import torchvision as tv
-import numpy as np
 
-from .utils import Subset, filter_images
+import numpy as np
+import torch.utils.data as data
+from PIL import Image
 
 from .dataset import IncrementalSegmentationDataset
-
-from PIL import Image
 
 classes = [
     "void",

@@ -1,9 +1,9 @@
-from .voc import VOCSegmentation, VOCSegmentationIncremental
+import os
+
+import tasks
 from .ade import AdeSegmentation, AdeSegmentationIncremental
 from .transform import *
-import tasks
-import torch
-import os
+from .voc import VOCSegmentation, VOCSegmentationIncremental
 
 
 def get_dataset(opts):

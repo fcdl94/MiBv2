@@ -1,15 +1,14 @@
+from functools import partial, reduce
+
+import inplace_abn
 import torch
 import torch.nn as nn
 import torch.nn.functional as functional
-
-import inplace_abn
 from inplace_abn import InPlaceABNSync, InPlaceABN, ABN
-from modules.custom_bn import ABR, InPlaceABR
-
-from functools import partial, reduce
 
 import models
 from modules import DeeplabV3, DeeplabV2
+from modules.custom_bn import ABR, InPlaceABR
 
 
 def make_model(opts, classes=None):

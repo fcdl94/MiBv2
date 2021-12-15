@@ -1,8 +1,8 @@
 import torch
+import torch.distributed as distributed
 import torch.nn as nn
 import torch.nn.functional as functional
 from inplace_abn import functions as in_funcs
-import torch.distributed as distributed
 
 
 class ABR(nn.Module):

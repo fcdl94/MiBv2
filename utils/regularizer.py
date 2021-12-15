@@ -1,5 +1,6 @@
-import torch
 from copy import deepcopy
+
+import torch
 
 EPS = 1e-8
 

@@ -1,16 +1,18 @@
-import torch
-from torch import distributed
-import torch.nn as nn
+import os.path as osp
 from functools import reduce
+
+import torch
+import torch.nn as nn
 import tqdm
-from utils.loss import KnowledgeDistillationLoss, BCEWithLogitsLossWithIgnoreIndex, \
-    UnbiasedKnowledgeDistillationLoss, UnbiasedCrossEntropy, IcarlLoss
+from torch import distributed
 from torch.cuda import amp
-from segmentation_module import make_model
+from torch.nn.parallel import DistributedDataParallel
+
 import tasks
 import utils
-from torch.nn.parallel import DistributedDataParallel
-import os.path as osp
+from segmentation_module import make_model
+from utils.loss import KnowledgeDistillationLoss, BCEWithLogitsLossWithIgnoreIndex, \
+    UnbiasedKnowledgeDistillationLoss, UnbiasedCrossEntropy, IcarlLoss
 
 
 class Trainer:

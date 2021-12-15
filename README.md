@@ -10,7 +10,8 @@ In the update, we provide:
 We still want to provide users implementations of:
 - [Prototype-based Incremental Few-Shot Semantic Segmentation](https://github.com/fcdl94/FSS)
 - [PLOP: Learning without Forgetting for Continual Semantic Segmentation](https://github.com/arthurdouillard/CVPR2021_PLOP)
-- [RECALL: Replay-based Continual Learning in Semantic Segmentation](https://github.com/LTTM/RECALL) 
+- [RECALL: Replay-based Continual Learning in Semantic Segmentation](https://github.com/LTTM/RECALL)
+- ADD Cityscapes and COCO datasets
 
 
 # Requirements
