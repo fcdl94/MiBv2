@@ -48,8 +48,7 @@ def make_model(opts, classes=None):
     head_channels = 256
     if opts.deeplab == 'v3':
         head = DeeplabV3(body.out_channels, head_channels, 256, norm_act=norm,
-                         out_stride=opts.output_stride, pooling_size=opts.pooling,
-                         pooling=not opts.no_pooling, last_relu=opts.relu)
+                         out_stride=opts.output_stride, pooling_size=opts.pooling)
     elif opts.deeplab == 'v2':
         head = DeeplabV2(body.out_channels, head_channels, norm_act=norm,
                          out_stride=opts.output_stride, last_relu=opts.relu)

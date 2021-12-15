@@ -19,9 +19,9 @@ class WandBLogger:
         if rank == 0:
             logging.info(f"[!] starting logging with name {logdir}")
             # remove this line after changing the logger's project and entity names
-            project, entity = "your_prog", "yourname"
+            project, entity = "WILSON", "fcdl94"
             assert project != "your_prog", "Go in utils/logger.py and change their names."
-            self.logger = wandb.init(project="your_prog", entity="yourname", name=name)
+            self.logger = wandb.init(project=project, entity=entity, name=name)
             if self.debug_flag:
                 logging.info(f"[!] Entering DEBUG mode")
             self.state = {}

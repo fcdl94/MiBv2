@@ -69,6 +69,7 @@ def main(opts):
                                  num_workers=opts.num_workers)
     logger.info(f"Dataset: {opts.dataset}, Train set: {len(train_dst)}, Val set: {len(val_dst)},"
                 f" Test set: {len(test_dst)}, n_classes {n_classes}")
+    opts.batch_size = opts.batch_size // world_size  # MAKE sure it is evenly divisible
     logger.info(f"Total batch size is {opts.batch_size * world_size}")
     opts.max_iters = opts.epochs * len(train_loader)
 
@@ -97,7 +98,7 @@ def main(opts):
 
     # xxx Train procedure
     # print opts before starting training to log all parameters
-    logger.add_table("Opts", vars(opts))
+    logger.add_config(opts)
 
     if rank == 0 and opts.sample_num > 0:
         sample_ids = np.random.choice(len(val_loader), opts.sample_num, replace=False)  # sample idxs for visualization
@@ -175,7 +176,7 @@ def main(opts):
     # xxx From here starts the test code
     logger.info("*** Test the model on all seen classes...")
     # make data loader
-    test_loader = data.DataLoader(test_dst, batch_size=opts.batch_size if opts.crop_val else 1,
+    test_loader = data.DataLoader(test_dst, batch_size=opts.batch_size,
                                   sampler=DistributedSampler(test_dst, num_replicas=world_size, rank=rank),
                                   num_workers=opts.num_workers)
 

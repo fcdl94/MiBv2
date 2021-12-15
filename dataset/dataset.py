@@ -63,7 +63,6 @@ class IncrementalSegmentationDataset(data.Dataset):
 
         # make the subset of the dataset
         self.target_transform = target_transform
-        self.indices = list(idxs)
 
     def set_up_void_test(self):
         self.inverted_order[255] = 255
@@ -74,22 +73,11 @@ class IncrementalSegmentationDataset(data.Dataset):
                 raise ValueError("absolute value of index should not exceed dataset length")
             index = len(self) + index
 
-        if index < len(self.indices):
+        if index < len(self):
             img, lbl = self.dataset[index]
             img, lbl = self.transform(img, lbl)
             lbl = self.target_transform(lbl)
             return img, lbl
-        else:
-            raise ValueError("absolute value of index should not exceed dataset length")
-
-    def get_image_id(self, index):
-        if index < 0:
-            if -index > len(self):
-                raise ValueError("absolute value of index should not exceed dataset length")
-            index = len(self) + index
-
-        if index < len(self.indices):
-            return self.indices[index]
         else:
             raise ValueError("absolute value of index should not exceed dataset length")
 
@@ -99,7 +87,7 @@ class IncrementalSegmentationDataset(data.Dataset):
             labels.remove(0)
 
     def __len__(self):
-        return len(self.indices)
+        return len(self.dataset)
 
     def make_dataset(self, root, train, indices):
         raise NotImplementedError

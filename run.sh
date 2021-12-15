@@ -3,7 +3,7 @@
 export CUDA_VISIBLE_DEVICES=$1
 port=$(python get_free_port.py)
 echo ${port}
-alias exp='python -m torch.distributed.launch --nproc_per_node=1 --master_port ${port} run.py --num_workers 8 --sample_num 8'
+alias exp='python -m torch.distributed.launch --nproc_per_node=2 --master_port ${port} run.py --num_workers 8 --sample_num 8'
 shopt -s expand_aliases
 overlap=$2
 
@@ -28,7 +28,7 @@ dataset_pars="--dataset ${dataset} --task ${task} --batch_size 24 --epochs 30 $o
 #exp --name FT --step 1 ${dataset_pars} --lr ${lr}
 #exp --name LWF --method LWF --step 1 ${dataset_pars} --lr ${lr} --step_ckpt $pretr_FT
 #exp --name ILT --method ILT --step 1 ${dataset_pars} --lr ${lr} --step_ckpt $pretr_FT
-exp --name MIB --method MiB --step 1 ${dataset_pars} --lr ${lr} --step_ckpt $pretr_FT
+exp --name MIB --method MiB --step 1 ${dataset_pars} --lr ${lr} --step_ckpt $pretr_FT --test --continue_ckpt
 
 #for i in 2 3 4 5; do
 #  exp --name LWF --method LWF --step $i ${dataset_pars} --lr ${lr}

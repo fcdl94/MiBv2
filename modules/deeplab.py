@@ -15,7 +15,7 @@ class DeeplabV3(nn.Module):
                  norm_act=nn.BatchNorm2d,
                  pooling=True,
                  pooling_size=None,
-                 last_relu=False):
+                 last_relu=True):
         super(DeeplabV3, self).__init__()
         self.pooling_size = pooling_size
 

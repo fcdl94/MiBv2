@@ -20,12 +20,19 @@ def get_dataset(opts):
                             std=[0.229, 0.224, 0.225]),
     ])
     val_transform = transform.Compose([
-        transform.PadCenterCrop(size=opts.crop_size_val, pad_if_needed=True),
+        transform.Resize(size=opts.crop_size),
+        transform.CenterCrop(size=opts.crop_size),
         transform.ToTensor(),
         transform.Normalize(mean=[0.485, 0.456, 0.406],
                             std=[0.229, 0.224, 0.225]),
     ])
-    test_transform = val_transform
+    test_transform = transform.Compose([
+        transform.Resize(size=opts.crop_size),
+        transform.CenterCrop(size=opts.crop_size),
+        transform.ToTensor(),
+        transform.Normalize(mean=[0.485, 0.456, 0.406],
+                            std=[0.229, 0.224, 0.225]),
+    ])
 
     step_dict = tasks.get_task_dict(opts.dataset, opts.task, opts.step)
     labels, labels_old, path_base = tasks.get_task_labels(opts.dataset, opts.task, opts.step)
