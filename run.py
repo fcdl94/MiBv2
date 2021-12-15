@@ -1,9 +1,8 @@
 import utils
 import argparser
 import os
-from utils.logger import Logger
+from utils.logger import WandBLogger
 from torch.utils.data.distributed import DistributedSampler
-from torch.nn.parallel import DistributedDataParallel
 
 import numpy as np
 import random
@@ -42,10 +41,8 @@ def main(opts):
     if opts.overlap and opts.dataset == 'voc':
         task_name += "-ov"
     logdir_full = f"{opts.logdir}/{task_name}/{opts.name}/"
-    if rank == 0:
-        logger = Logger(logdir_full, rank=rank, debug=opts.debug, summary=opts.visualize, step=opts.step)
-    else:
-        logger = Logger(logdir_full, rank=rank, debug=opts.debug, summary=False)
+    logger = WandBLogger(logdir_full, rank=rank, debug=opts.debug, summary=opts.visualize, step=opts.step,
+                         name=f"{task_name}_{opts.name}")
 
     ckpt_path = f"checkpoints/step/{task_name}/{opts.name}_{opts.step}.pth"
     if not os.path.exists(f"checkpoints/step/{task_name}"):
@@ -114,7 +111,6 @@ def main(opts):
 
     TRAIN = not opts.test
     val_metrics = StreamSegMetrics(n_classes)
-    results = {}
 
     # check if random is equal here.
     logger.print(torch.randint(0, 100, (1, 1)))
@@ -127,19 +123,15 @@ def main(opts):
                     f" Class Loss={epoch_loss[0]}, Reg Loss={epoch_loss[1]}")
 
         # =====  Log metrics on Tensorboard =====
-        logger.add_scalar("E-Loss", epoch_loss[0] + epoch_loss[1], cur_epoch)
-        logger.add_scalar("E-Loss-reg", epoch_loss[1], cur_epoch)
-        logger.add_scalar("E-Loss-cls", epoch_loss[0], cur_epoch)
+        logger.add_scalar("Train/Tot", epoch_loss[0] + epoch_loss[1], cur_epoch)
+        logger.add_scalar("Train/Reg", epoch_loss[1], cur_epoch)
+        logger.add_scalar("Train/Cls", epoch_loss[0], cur_epoch)
 
         # =====  Validation  =====
         if (cur_epoch + 1) % opts.val_interval == 0:
             logger.info("validate on val set...")
             val_score, ret_samples = trainer.validate(loader=val_loader, metrics=val_metrics,
                                                       ret_samples_ids=sample_ids)
-
-            logger.print("Done validation")
-            logger.info(f"End of Validation {cur_epoch}/{opts.epochs}")
-
             logger.info(val_metrics.to_str(val_score))
 
             # =====  Save Best Model  =====
@@ -151,14 +143,13 @@ def main(opts):
 
             # =====  Log metrics on Tensorboard =====
             # visualize validation score and samples
-            logger.add_scalar("Val_Overall_Acc", val_score['Overall Acc'], cur_epoch)
-            logger.add_scalar("Val_MeanIoU", val_score['Mean IoU'], cur_epoch)
-            logger.add_table("Val_Class_IoU", val_score['Class IoU'], cur_epoch)
-            logger.add_table("Val_Acc_IoU", val_score['Class Acc'], cur_epoch)
-
-            # keep the metric to print them at the end of training
-            results["V-IoU"] = val_score['Class IoU']
-            results["V-Acc"] = val_score['Class Acc']
+            logger.add_scalar("Val/Overall_Acc", val_score['Overall Acc'], cur_epoch)
+            logger.add_scalar("Val/MeanAcc", val_score['Agg'][1], cur_epoch)
+            logger.add_scalar("Val/MeanPrec", val_score['Agg'][2], cur_epoch)
+            logger.add_scalar("Val/MeanIoU", val_score['Mean IoU'], cur_epoch)
+            logger.add_table("Val/Class_IoU", val_score['Class IoU'], cur_epoch)
+            logger.add_table("Val/Acc_IoU", val_score['Class Acc'], cur_epoch)
+            logger.add_figure("Val/Confusion_Matrix", val_score['Confusion Matrix'], cur_epoch)
 
             for k, (img, target, lbl) in enumerate(ret_samples):
                 img = (denorm(img) * 255).astype(np.uint8)
@@ -166,8 +157,11 @@ def main(opts):
                 lbl = label2color(lbl).transpose(2, 0, 1).astype(np.uint8)
 
                 concat_img = np.concatenate((img, target, lbl), axis=2)  # concat along width
-                logger.add_image(f'Sample_{k}', concat_img, cur_epoch)
+                logger.add_image(f'Sample/{k}', concat_img, cur_epoch)
+            logger.print("Done validation")
+            logger.info(f"End of Validation {cur_epoch}/{opts.epochs}")
 
+        logger.commit()
         cur_epoch += 1
 
     # =====  Save Best Model at the end of training =====
@@ -188,16 +182,14 @@ def main(opts):
     val_score, _ = trainer.validate(loader=test_loader, metrics=val_metrics)
     logger.info(f"*** End of Test")
     logger.info(val_metrics.to_str(val_score))
-    logger.add_table("Test_Class_IoU", val_score['Class IoU'])
-    logger.add_table("Test_Class_Acc", val_score['Class Acc'])
-    logger.add_figure("Test_Confusion_Matrix", val_score['Confusion Matrix'])
-    results["T-IoU"] = val_score['Class IoU']
-    results["T-Acc"] = val_score['Class Acc']
-    logger.add_results(results)
+    logger.add_table("Test/Class_IoU", val_score['Class IoU'])
+    logger.add_table("Test/Class_Acc", val_score['Class Acc'])
+    logger.add_figure("Test/Confusion_Matrix", val_score['Confusion Matrix'])
 
-    logger.add_scalar("T_Overall_Acc", val_score['Overall Acc'], opts.step)
-    logger.add_scalar("T_MeanIoU", val_score['Mean IoU'], opts.step)
-    logger.add_scalar("T_MeanAcc", val_score['Mean Acc'], opts.step)
+    logger.add_scalar("Test/Overall_Acc", val_score['Overall Acc'], opts.step)
+    logger.add_scalar("Test/MeanIoU", val_score['Mean IoU'], opts.step)
+    logger.add_scalar("Test/MeanAcc", val_score['Mean Acc'], opts.step)
+    logger.commit()
 
     logger.log_results(task=task_name, name=opts.name, results=val_score['Class IoU'].values())
     logger.log_aggregates(task=task_name, name=opts.name, results=val_score['Agg'])

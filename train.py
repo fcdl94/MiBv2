@@ -22,9 +22,6 @@ class Trainer:
 
         classes = tasks.get_per_task_classes(opts.dataset, opts.task, opts.step)
         self.model = make_model(opts, classes=classes)
-        # logger.debug(model)
-        # logger.info(f"Backbone: {opts.backbone}")
-        # logger.info(f"[!] Model made with{'out' if opts.no_pretrained else ''} pre-trained")
 
         if opts.step == 0:  # if step 0, we don't need to instance the model_old
             self.model_old = None
@@ -110,10 +107,6 @@ class Trainer:
         return optimizer, scheduler
 
     def distribute(self, opts):
-        # if self.model_old is not None:
-        #    self.model_old = DistributedDataParallel(self.model_old.to(self.device), device_ids=[opts.device_id],
-        #                                             output_device=opts.device_id, find_unused_parameters=False)
-
         self.model = DistributedDataParallel(self.model.to(self.device), device_ids=[opts.device_id],
                                              output_device=opts.device_id, find_unused_parameters=False)
 
@@ -211,7 +204,8 @@ class Trainer:
                 # visualization
                 if logger is not None:
                     x = cur_epoch * len(train_loader) + cur_step + 1
-                    logger.add_scalar('Loss', interval_loss, x)
+                    logger.add_scalar('Loss/Tot', interval_loss, x, intermediate=True)
+                    logger.commit(intermediate=True)
                 interval_loss = 0.0
 
         if tq is not None:
