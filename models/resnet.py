@@ -76,7 +76,14 @@ class ResNet(nn.Module):
                 stride, dil = self._stride_dilation(dilation, mod_id, block_id)
                 blocks.append((
                     "block%d" % (block_id + 1),
-                    ResidualBlock(in_channels, channels, norm_act=norm_act, stride=stride, dilation=dil)
+                    ResidualBlock(
+                        in_channels,
+                        channels,
+                        norm_act=norm_act,
+                        stride=stride,
+                        dilation=dil,
+                        last=block_id == num - 1
+                    )
                 ))
 
                 # Update channels and p_keep
@@ -104,21 +111,36 @@ class ResNet(nn.Module):
         return s, d
 
     def forward(self, x):
-        outs = list()
+        outs = []
+        attentions = []
 
-        outs.append(self.mod1(x))
-        outs.append(self.mod2(outs[-1]))
-        outs.append(self.mod3(outs[-1]))
-        outs.append(self.mod4(outs[-1]))
-        outs.append(self.mod5(outs[-1]))
+        x = self.mod1(x)
+        #attentions.append(x)
+        outs.append(x)
+
+        x, att = self.mod2(x)
+        attentions.append(att)
+        outs.append(x)
+
+        x, att = self.mod3(x)
+        attentions.append(att)
+        outs.append(x)
+
+        x, att = self.mod4(x)
+        attentions.append(att)
+        outs.append(x)
+
+        x, att = self.mod5(x)
+        attentions.append(att)
+        outs.append(x)
 
         if hasattr(self, "classifier"):
             outs.append(self.classifier(outs[-1]))
 
         if self.keep_outputs:
-            return outs
+            return outs, attentions
         else:
-            return outs[-1]
+            return outs[-1], attentions
 
 
 _NETS = {

@@ -34,10 +34,14 @@ def modify_command_options(opts):
         if opts.method == 'PI':
             opts.regularizer = "pi"
             opts.reg_importance = 500
-        if opts.method == 'MiB':
+        if opts.method.upper() == 'MIB':
             opts.loss_kd = 10 if "15-1" not in opts.task else 100
             opts.unce = True
             opts.unkd = True
+            opts.init_balanced = True
+        if opts.method == 'PLOP':
+            opts.pod = True
+            opts.pseudo = True
             opts.init_balanced = True
 
     opts.no_overlap = not opts.overlap
@@ -66,7 +70,7 @@ def get_argparser():
     # Method Options
     # BE CAREFUL USING THIS, THEY WILL OVERRIDE ALL THE OTHER PARAMETERS.
     parser.add_argument("--method", type=str, default=None,
-                        choices=['FT', 'LWF', 'LWF-MC', 'ILT', 'EWC', 'RW', 'PI', 'MiB'],
+                        choices=['FT', 'LWF', 'LWF-MC', 'ILT', 'EWC', 'RW', 'PI', 'MiB', 'PLOP'],
                         help="The method you want to use. BE CAREFUL USING THIS, IT MAY OVERRIDE OTHER PARAMETERS.")
 
     # Train Options
@@ -162,7 +166,7 @@ def get_argparser():
     parser.add_argument("--icarl_bkg", action='store_true', default=False,
                         help="If use background from GT (def: No)")
 
-    # METHODS
+    # MiB
     parser.add_argument("--init_balanced", default=False, action='store_true',
                         help="Enable Background-based initialization for new classes")
     parser.add_argument("--unkd", default=False, action='store_true',
@@ -171,6 +175,12 @@ def get_argparser():
                         help="The parameter to hard-ify the soft-labels. Def is 1.")
     parser.add_argument("--unce", default=False, action='store_true',
                         help="Enable Unbiased Cross Entropy instead of CrossEntropy")
+
+    # PLOP
+    parser.add_argument("--pod", default=False, action='store_true',
+                        help="Enable POD distillation")
+    parser.add_argument("--pseudo", default=False, action='store_true',
+                        help="Enable POD distillation")
 
     # Incremental parameters
     parser.add_argument("--task", type=str, default="19-1", choices=tasks.get_task_list(),

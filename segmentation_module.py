@@ -88,7 +88,7 @@ class IncrementalSegmentationModule(nn.Module):
 
     def _network(self, x, ret_intermediate=False):
 
-        x_b = self.body(x)
+        x_b, attentions = self.body(x)
         x_pl = self.head(x_b)
         out = []
         for mod in self.cls:
@@ -96,7 +96,7 @@ class IncrementalSegmentationModule(nn.Module):
         x_o = torch.cat(out, dim=1)
 
         if ret_intermediate:
-            return x_o, x_b,  x_pl
+            return x_o, x_b, x_pl, attentions
         return x_o
 
     def init_new_classifier(self, device):
@@ -118,12 +118,17 @@ class IncrementalSegmentationModule(nn.Module):
 
         out = self._network(x, ret_intermediate)
 
-        sem_logits = out[0] if ret_intermediate else out
+        sem_logits_small = out[0] if ret_intermediate else out
 
-        sem_logits = functional.interpolate(sem_logits, size=out_size, mode="bilinear", align_corners=False)
+        sem_logits = functional.interpolate(sem_logits_small, size=out_size, mode="bilinear", align_corners=False)
 
         if ret_intermediate:
-            return sem_logits, {"body": out[1], "pre_logits": out[2]}
+            return sem_logits, {
+                "body": out[1],
+                "pre_logits": out[2],
+                "attentions": out[3] + [out[2]],
+                "sem_logits_small": sem_logits_small
+            }
 
         return sem_logits, {}
 

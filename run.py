@@ -61,6 +61,7 @@ def main(opts):
     # reset the seed, this revert changes in random seed
     random.seed(opts.random_seed)
 
+    opts.batch_size = opts.batch_size // world_size  # MAKE sure it is evenly divisible
     train_loader = data.DataLoader(train_dst, batch_size=opts.batch_size,
                                    sampler=DistributedSampler(train_dst, num_replicas=world_size, rank=rank),
                                    num_workers=opts.num_workers, drop_last=True)
@@ -69,7 +70,7 @@ def main(opts):
                                  num_workers=opts.num_workers)
     logger.info(f"Dataset: {opts.dataset}, Train set: {len(train_dst)}, Val set: {len(val_dst)},"
                 f" Test set: {len(test_dst)}, n_classes {n_classes}")
-    opts.batch_size = opts.batch_size // world_size  # MAKE sure it is evenly divisible
+
     logger.info(f"Total batch size is {opts.batch_size * world_size}")
     opts.max_iters = opts.epochs * len(train_loader)
 
@@ -116,6 +117,9 @@ def main(opts):
     # check if random is equal here.
     logger.print(torch.randint(0, 100, (1, 1)))
     # train/val here
+    if TRAIN:
+        trainer.before(train_loader=train_loader, logger=logger)
+
     while cur_epoch < opts.epochs and TRAIN:
         # =====  Train  =====
         epoch_loss = trainer.train(cur_epoch=cur_epoch, train_loader=train_loader)
