@@ -9,11 +9,12 @@ from inplace_abn import InPlaceABNSync, InPlaceABN, ABN
 import models
 from modules import DeeplabV3, DeeplabV2
 from modules.custom_bn import ABR, InPlaceABR
+import torch.distributed as distributed
 
 
 def make_model(opts, classes=None):
     if opts.norm_act == 'iabn_sync':
-        norm = partial(InPlaceABNSync, activation="leaky_relu", activation_param=.01)
+        norm = partial(InPlaceABNSync, activation="leaky_relu", activation_param=.01, group=distributed.group.WORLD)
     elif opts.norm_act == 'iabn':
         norm = partial(InPlaceABN, activation="leaky_relu", activation_param=.01)
     elif opts.norm_act == 'abn':

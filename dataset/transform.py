@@ -85,10 +85,7 @@ class Resize(object):
             PIL Image: Rescaled image.
         """
         if lbl is not None:
-            if isinstance(lbl, torch.Tensor):
-                F.resize(img, self.size, self.interpolation), F.resize(lbl, self.size, InterpolationMode.BILINEAR)
-            else:
-                return F.resize(img, self.size, self.interpolation), F.resize(lbl, self.size, InterpolationMode.NEAREST)
+            return F.resize(img, self.size, self.interpolation), F.resize(lbl, self.size, InterpolationMode.NEAREST)
         else:
             return F.resize(img, self.size, self.interpolation)
 
@@ -653,12 +650,8 @@ class RandomResizedCrop(object):
         """
         i, j, h, w = self.get_params(img, self.scale, self.ratio)
         if lbl is not None:
-            if isinstance(lbl, torch.Tensor):
-                return F.resized_crop(img, i, j, h, w, self.size, self.interpolation), \
-                       F.resized_crop(lbl, i, j, h, w, self.size, InterpolationMode.BILINEAR)
-            else:
-                return F.resized_crop(img, i, j, h, w, self.size, self.interpolation), \
-                       F.resized_crop(lbl, i, j, h, w, self.size, InterpolationMode.NEAREST)
+            return F.resized_crop(img, i, j, h, w, self.size, self.interpolation), \
+                   F.resized_crop(lbl, i, j, h, w, self.size, InterpolationMode.NEAREST)
         else:
             return F.resized_crop(img, i, j, h, w, self.size, self.interpolation)
 

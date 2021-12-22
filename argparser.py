@@ -25,23 +25,14 @@ def modify_command_options(opts):
         if opts.method == 'ILT':
             opts.loss_kd = 100
             opts.loss_de = 100
-        if opts.method == 'EWC':
-            opts.regularizer = "ewc"
-            opts.reg_importance = 500
-        if opts.method == 'RW':
-            opts.regularizer = "rw"
-            opts.reg_importance = 100
-        if opts.method == 'PI':
-            opts.regularizer = "pi"
-            opts.reg_importance = 500
         if opts.method.upper() == 'MIB':
             opts.loss_kd = 10 if "15-1" not in opts.task else 100
             opts.unce = True
             opts.unkd = True
             opts.init_balanced = True
         if opts.method == 'PLOP':
-            opts.pod = True
-            opts.pseudo = True
+            opts.pod = "local"
+            opts.pseudo = "entropy"
             opts.init_balanced = True
 
     opts.no_overlap = not opts.overlap
@@ -77,13 +68,13 @@ def get_argparser():
     parser.add_argument("--epochs", type=int, default=30,
                         help="epoch number (default: 30)")
 
-    parser.add_argument("--batch_size", type=int, default=4,
-                        help='batch size (default: 4)')
+    parser.add_argument("--batch_size", type=int, default=24,
+                        help='batch size (default: 24)')
     parser.add_argument("--crop_size", type=int, default=512,
                         help="crop size (default: 512)")
 
-    parser.add_argument("--lr", type=float, default=0.007,
-                        help="learning rate (default: 0.007)")
+    parser.add_argument("--lr", type=float, default=0.001,
+                        help="learning rate (default: 0.001)")
     parser.add_argument("--momentum", type=float, default=0.9,
                         help='momentum for SGD (default: 0.9)')
     parser.add_argument("--weight_decay", type=float, default=1e-4,
@@ -132,7 +123,7 @@ def get_argparser():
     parser.add_argument("--no_pretrained", action='store_true', default=False,
                         help='Wheather to use pretrained or not (def: True)')
     parser.add_argument("--norm_act", type=str, default="iabn_sync",
-                        choices=['iabn_sync', 'iabn', 'abn', 'std'], help='Which BN to use (def: abn_sync')
+                        choices=['iabn_sync', 'iabn', 'abn', 'std'], help='Which BN to use (def: iabn_sync')
     parser.add_argument("--pooling", type=int, default=32,
                         help='pooling in ASPP for the validation phase (def: 32)')
 
@@ -176,10 +167,10 @@ def get_argparser():
     parser.add_argument("--unce", default=False, action='store_true',
                         help="Enable Unbiased Cross Entropy instead of CrossEntropy")
 
-    # PLOP
-    parser.add_argument("--pod", default=False, action='store_true',
+    # # PLOP
+    parser.add_argument("--pod", default=None, type=str,
                         help="Enable POD distillation")
-    parser.add_argument("--pseudo", default=False, action='store_true',
+    parser.add_argument("--pseudo", default=None, type=str,
                         help="Enable POD distillation")
 
     # Incremental parameters

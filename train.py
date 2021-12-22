@@ -93,35 +93,33 @@ class Trainer:
 
         self.ret_intermediate = self.lde or (opts.pod is not None)
 
-        # PseudoLabeling
-        self.pseudo_labeling = opts.pseudo
+        self.pseudo_labeling = None
         self.classif_adaptive_factor = False
-        if self.pseudo_labeling:
-            self.pseudo_labeling_mode = "entropy"
-            self.threshold = 0.1
+        self.thresholds, self.max_entropy = None, None
+        if opts.pseudo:
+            self.pseudo_labeling = "entropy"
+            self.threshold = 0.001
             self.classif_adaptive_factor = True
             self.classif_adaptive_min_factor = 0.0
-            self.pseudo_soft = None
 
-        # POD
-        self.pod = opts.pod
-        if self.pod:
-            self.pod_mode = "local"
-            self.pod_factor = 0.1
+        self.pod = None
+        if opts.pod:
+            self.pod = "local"
+            self.pod_factor = 0.01
             self.pod_logits = True
-            self.pod_options = {"switch": {"after": {"extra_channels": "sum", "factor": 0.0005, "type": "local"}}}
-            self.pod_prepro = "pow"
-            self.use_pod_schedule = True
+            self.pod_apply = 'all'
             self.pod_deeplab_mask = False
             self.pod_deeplab_mask_factor = None
-            self.pod_apply = "all"
+            self.pod_options = {"switch": {"after": {"extra_channels": "sum", "factor": 0.0005, "type": "local"}}}
+            self.use_pod_schedule = True
             self.pod_interpolate_last = False
+            self.pod_large_logits = False
+            self.pod_prepro = 'pow'
             self.deeplab_mask_downscale = False
             self.spp_scales = [1, 2, 4]
-            self.pod_large_logits = False
 
         self.compute_model_old = (self.lde_flag or self.lkd_flag or self.icarl_dist_flag or
-                                  self.pod or self.pseudo_labeling)
+                                  self.pod is not None or self.pseudo_labeling is not None)
         self.compute_model_old = self.compute_model_old and self.model_old is not None
 
     def get_optimizer(self, opts):
@@ -153,19 +151,17 @@ class Trainer:
                                              output_device=opts.device_id, find_unused_parameters=False)
 
     def before(self, train_loader, logger):
-        with torch.no_grad():
-            if not self.pseudo_labeling:
-                return
-            if self.pseudo_labeling_mode.split("_")[0] == "median" and self.step > 0:
+        if self.pseudo_labeling is None:
+            return
+        with amp.autocast():
+            if self.pseudo_labeling.split("_")[0] == "median" and self.step > 0:
                 logger.info("Find median score")
-                with amp.autocast(enabled=True):
-                    self.thresholds, _ = find_median(train_loader, self.device, logger, self.model_old,
-                                                     self.nb_current_classes, self.threshold)
-            elif self.pseudo_labeling_mode.split("_")[0] == "entropy" and self.step > 0:
+                self.thresholds, _ = find_median(train_loader, self.device, logger, self.model_old,
+                                                 self.nb_current_classes, self.threshold)
+            elif self.pseudo_labeling.split("_")[0] == "entropy" and self.step > 0:
                 logger.info("Find median score")
-                with amp.autocast(enabled=True):
-                    self.thresholds, self.max_entropy = find_median(train_loader, self.device, logger, self.model_old,
-                                                                    self.nb_current_classes, self.threshold, mode="entropy")
+                self.thresholds, self.max_entropy = find_median(train_loader, self.device, logger, self.model_old,
+                                                                self.nb_current_classes, self.threshold, mode="entropy")
 
     def train(self, cur_epoch, train_loader, print_int=10):
         """Train and return epoch loss"""
@@ -201,49 +197,48 @@ class Trainer:
             images = images.to(device, dtype=torch.float32)
             labels = labels.to(device, dtype=torch.long)
 
-            with amp.autocast(enabled=True):
+            with amp.autocast():
                 if self.compute_model_old:
                     with torch.no_grad():
                         outputs_old, features_old = self.model_old(images, ret_intermediate=self.ret_intermediate)
 
                 classif_adaptive_factor = 1.0
-                if self.step > 0 and self.pseudo_labeling:
+                if self.step > 0 and self.pseudo_labeling is not None:
                     mask_background = labels < self.old_classes
 
-                    if self.pseudo_labeling_mode == "naive":
+                    if self.pseudo_labeling == "naive":
                         labels[mask_background] = outputs_old.argmax(dim=1)[mask_background]
-                    elif self.pseudo_labeling is not None and self.pseudo_labeling_mode.startswith("threshold_"):
+                    elif self.pseudo_labeling is not None and self.pseudo_labeling.startswith("threshold_"):
                         threshold = float(self.pseudo_labeling.split("_")[1])
                         probs = torch.softmax(outputs_old, dim=1)
                         pseudo_labels = probs.argmax(dim=1)
                         pseudo_labels[probs.max(dim=1)[0] < threshold] = 255
                         labels[mask_background] = pseudo_labels[mask_background]
-                    elif self.pseudo_labeling_mode == "median":
+                    elif self.pseudo_labeling == "median":
                         probs = torch.softmax(outputs_old, dim=1)
                         max_probs, pseudo_labels = probs.max(dim=1)
                         pseudo_labels[max_probs < self.thresholds[pseudo_labels]] = 255
                         labels[mask_background] = pseudo_labels[mask_background]
-                    elif self.pseudo_labeling_mode == "entropy":
+                    elif self.pseudo_labeling == "entropy":
                         probs = torch.softmax(outputs_old, dim=1)
                         max_probs, pseudo_labels = probs.max(dim=1)
 
                         mask_valid_pseudo = (entropy(probs) /
                                              self.max_entropy) < self.thresholds[pseudo_labels]
 
-                        if self.pseudo_soft is None:
-                            # All old labels that are NOT confident enough to be used as pseudo labels:
-                            labels[~mask_valid_pseudo & mask_background] = 255
-                            labels[mask_valid_pseudo & mask_background] = pseudo_labels[mask_valid_pseudo &
-                                                                                        mask_background]
+                        # All old labels that are NOT confident enough to be used as pseudo labels:
+                        labels[~mask_valid_pseudo & mask_background] = 255
+                        labels[mask_valid_pseudo & mask_background] = pseudo_labels[mask_valid_pseudo &
+                                                                                    mask_background]
                         if self.classif_adaptive_factor:
                             # Number of old/bg pixels that are certain
                             num = (mask_valid_pseudo & mask_background).float().sum(dim=(1, 2))
                             # Number of old/bg pixels
-                            den = mask_background.float().sum(dim=(1, 2)) + 1e-5
+                            den = mask_background.float().sum(dim=(1, 2))
                             # If all old/bg pixels are certain the factor is 1 (loss not changed)
                             # Else the factor is < 1, i.e. the loss is reduced to avoid
                             # giving too much importance to new pixels
-                            classif_adaptive_factor = num / den
+                            classif_adaptive_factor = num / (den + 1e-6)
                             classif_adaptive_factor = classif_adaptive_factor[:, None, None]
 
                             if self.classif_adaptive_min_factor:
@@ -281,7 +276,7 @@ class Trainer:
                     # resize new output to remove new logits and keep only the old ones
                     lkd = self.lkd * self.lkd_loss(outputs, outputs_old)
 
-                if self.pod and self.step > 0:
+                if self.pod is not None and self.step > 0:
                     attentions_old = features_old["attentions"]
                     attentions_new = features["attentions"]
 
@@ -295,7 +290,7 @@ class Trainer:
                     pod_loss = features_distillation(
                         attentions_old,
                         attentions_new,
-                        collapse_channels=self.pod_mode,
+                        collapse_channels=self.pod,
                         labels=labels,
                         index_new_class=self.old_classes,
                         pod_apply=self.pod_apply,
@@ -378,7 +373,7 @@ class Trainer:
                 images = images.to(device, dtype=torch.float32)
                 labels = labels.to(device, dtype=torch.long)
 
-                with amp.autocast(enabled=True):
+                with amp.autocast():
                     outputs, features = model(images, ret_intermediate=False)
                 _, prediction = outputs.max(dim=1)
 
