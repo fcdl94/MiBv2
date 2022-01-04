@@ -19,9 +19,9 @@ def modify_command_options(opts):
             pass
         if opts.method == 'LWF':
             opts.loss_kd = 100
-        if opts.method == 'LWF-MC':
-            opts.icarl = True
-            opts.icarl_importance = 10
+        # if opts.method == 'LWF-MC':
+        #     opts.icarl = True
+        #     opts.icarl_importance = 10
         if opts.method == 'ILT':
             opts.loss_kd = 100
             opts.loss_de = 100
@@ -31,9 +31,18 @@ def modify_command_options(opts):
             opts.unkd = True
             opts.init_balanced = True
         if opts.method == 'PLOP':
-            opts.pod = "local"
-            opts.pseudo = "entropy"
+            if opts.overlap:
+                opts.threshold = 0.001
+                opts.pod_factor = 0.0005
+            else:
+                opts.threshold = 0.5
+                opts.pod_factor = 0.0001
+            opts.pod = True
+            opts.pseudo = True
             opts.init_balanced = True
+        if opts.method == "IC":
+            opts.icarl = True
+            opts.icarl_bkg = -1
 
     opts.no_overlap = not opts.overlap
 
@@ -61,7 +70,7 @@ def get_argparser():
     # Method Options
     # BE CAREFUL USING THIS, THEY WILL OVERRIDE ALL THE OTHER PARAMETERS.
     parser.add_argument("--method", type=str, default=None,
-                        choices=['FT', 'LWF', 'LWF-MC', 'ILT', 'EWC', 'RW', 'PI', 'MiB', 'PLOP'],
+                        choices=['FT', 'LWF', 'IC', 'ILT', 'EWC', 'RW', 'PI', 'MiB', 'PLOP'],
                         help="The method you want to use. BE CAREFUL USING THIS, IT MAY OVERRIDE OTHER PARAMETERS.")
 
     # Train Options
@@ -121,11 +130,13 @@ def get_argparser():
     parser.add_argument("--output_stride", type=int, default=16,
                         choices=[8, 16], help='stride for the backbone (def: 16)')
     parser.add_argument("--no_pretrained", action='store_true', default=False,
-                        help='Wheather to use pretrained or not (def: True)')
+                        help='Whether to use pretrained or not (def: True)')
     parser.add_argument("--norm_act", type=str, default="iabn_sync",
-                        choices=['iabn_sync', 'iabn', 'abn', 'std'], help='Which BN to use (def: iabn_sync')
+                        help='Which BN to use (def: iabn_sync')
     parser.add_argument("--pooling", type=int, default=32,
                         help='pooling in ASPP for the validation phase (def: 32)')
+    parser.add_argument("--cosine", action='store_true', default=False,
+                        help='Whether to use cosine classifier (def: False)')
 
     # Test and Checkpoint options
     parser.add_argument("--test",  action='store_true', default=False,
@@ -150,10 +161,6 @@ def get_argparser():
     # Arguments for ICaRL (from https://arxiv.org/abs/1611.07725)
     parser.add_argument("--icarl", default=False, action='store_true',
                         help="If enable ICaRL or not (def is not)")
-    parser.add_argument("--icarl_importance",  type=float, default=1.,
-                        help="the regularization importance in ICaRL (def is 1.)")
-    parser.add_argument("--icarl_disjoint", action='store_true', default=False,
-                        help="Which version of icarl is to use (def: combined)")
     parser.add_argument("--icarl_bkg", action='store_true', default=False,
                         help="If use background from GT (def: No)")
 

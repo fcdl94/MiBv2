@@ -8,13 +8,16 @@ from inplace_abn import InPlaceABNSync, InPlaceABN, ABN
 
 import models
 from modules import DeeplabV3, DeeplabV2
-from modules.custom_bn import ABR, InPlaceABR
+from modules.custom_bn import ABR, InPlaceABR, InPlaceABRSync
 import torch.distributed as distributed
+from modules.classifiers import CosineClassifier, IncrementalClassifier
 
 
 def make_model(opts, classes=None):
     if opts.norm_act == 'iabn_sync':
         norm = partial(InPlaceABNSync, activation="leaky_relu", activation_param=.01, group=distributed.group.WORLD)
+    elif opts.norm_act == 'iabr_sync':
+        norm = partial(InPlaceABRSync, activation="leaky_relu", activation_param=.01)
     elif opts.norm_act == 'iabn':
         norm = partial(InPlaceABN, activation="leaky_relu", activation_param=.01)
     elif opts.norm_act == 'abn':
@@ -57,7 +60,12 @@ def make_model(opts, classes=None):
         head = nn.Conv2d(body.out_channels, head_channels, kernel_size=1)
 
     if classes is not None:
-        model = IncrementalSegmentationModule(body, head, head_channels, classes=classes)
+        if not opts.cosine:
+            cls = IncrementalClassifier(classes, channels=head_channels)
+        else:
+            cls = CosineClassifier(classes, channels=head_channels)
+
+        model = IncrementalSegmentationModule(body, head, cls)
     else:
         model = SegmentationModule(body, head, head_channels, opts.num_classes)
 
@@ -73,48 +81,26 @@ def flip(x, dim):
 
 class IncrementalSegmentationModule(nn.Module):
 
-    def __init__(self, body, head, head_channels, classes):
+    def __init__(self, body, head, cls):
         super(IncrementalSegmentationModule, self).__init__()
         self.body = body
         self.head = head
-        # classes must be a list where [n_class_task[i] for i in tasks]
-        assert isinstance(classes, list), \
-            "Classes must be a list where to every index correspond the num of classes for that task"
-        self.cls = nn.ModuleList(
-            [nn.Conv2d(head_channels, c, 1) for c in classes]
-        )
-        self.classes = classes
-        self.head_channels = head_channels
-        self.tot_classes = reduce(lambda a, b: a + b, self.classes)
+        self.cls = cls
 
     def _network(self, x, ret_intermediate=False):
 
         x_b, attentions = self.body(x)
         x_pl = self.head(x_b)
-        out = []
-        for mod in self.cls:
-            out.append(mod(x_pl))
-        x_o = torch.cat(out, dim=1)
+        x_o = self.cls(x_pl)
 
         if ret_intermediate:
             return x_o, x_b, x_pl, attentions
         return x_o
 
     def init_new_classifier(self, device):
-        cls = self.cls[-1]
-        imprinting_w = self.cls[0].weight[0]
-        bkg_bias = self.cls[0].bias[0]
+        self.cls.init_new_classifier(device)
 
-        bias_diff = torch.log(torch.FloatTensor([self.classes[-1] + 1])).to(device)
-
-        new_bias = (bkg_bias - bias_diff)
-
-        cls.weight.data.copy_(imprinting_w)
-        cls.bias.data.copy_(new_bias)
-
-        self.cls[0].bias[0].data.copy_(new_bias.squeeze(0))
-
-    def forward(self, x, scales=None, do_flip=False, ret_intermediate=False):
+    def forward(self, x, ret_intermediate=False):
         out_size = x.shape[-2:]
 
         out = self._network(x, ret_intermediate)

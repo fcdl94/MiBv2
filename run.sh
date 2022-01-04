@@ -9,7 +9,7 @@ overlap=$2
 
 dataset=voc
 epochs=30
-task=10-10
+task=19-1
 lr_init=0.01
 lr=0.001
 
@@ -21,16 +21,17 @@ else
   ov="--overlap"
 fi
 
-pretr_FT=${path}FT_0.pth
-task=10-10
-dataset_pars="--dataset ${dataset} --task ${task} --batch_size 24 --epochs 30 $ov --val_interval 5"
+dataset_pars="--dataset ${dataset} --task ${task} --batch_size 24 --epochs 30 $ov --val_interval 2 --random_seed 1"
 exp --name FT  --step 0 --lr ${lr_init} ${dataset_pars}
+exp --name FT_bce  --step 0 --lr ${lr_init} ${dataset_pars} --bce
 
 #exp --name FT --step 1 ${dataset_pars} --lr ${lr}
 #exp --name LWF --method LWF --step 1 ${dataset_pars} --lr ${lr} --step_ckpt $pretr_FT
 #exp --name ILT --method ILT --step 1 ${dataset_pars} --lr ${lr} --step_ckpt $pretr_FT
-exp --name MiB --method MiB --step 1 ${dataset_pars} --lr ${lr} --step_ckpt $pretr_FT #--norm_act iabn
-exp --name PLOP --method PLOP --step 1 ${dataset_pars} --lr ${lr} --step_ckpt $pretr_FT
+exp --name MiB --method MiB --step 1 ${dataset_pars} --lr ${lr} --step_ckpt ${path}FT_0.pth
+exp --name PLOP --method PLOP --step 1 ${dataset_pars} --lr ${lr} --step_ckpt ${path}FT_0.pth
+exp --name IC --method IC --step 1 ${dataset_pars} --lr ${lr} --step_ckpt ${path}FT_bce_0.pth
+
 
 #for i in 2 3 4 5; do
 ##  exp --name LWF --method LWF --step $i ${dataset_pars} --lr ${lr}

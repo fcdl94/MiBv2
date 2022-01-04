@@ -41,15 +41,13 @@ class IncrementalSegmentationDataset(data.Dataset):
             self.labels = list(step_dict[step])
         self.labels_old = [lbl for s in range(step) for lbl in step_dict[s]]
 
-        self.masking_value = masking_value
-        self.masking = masking
-
         self.inverted_order = {lb: self.order.index(lb) for lb in self.order}
         if train:
             self.inverted_order[255] = masking_value
         else:
             self.set_up_void_test()
 
+        self.masking = masking
         if masking:
             tmp_labels = self.labels + [255]
             mapping_dict = {x: self.inverted_order[x] for x in tmp_labels}
@@ -59,10 +57,9 @@ class IncrementalSegmentationDataset(data.Dataset):
         mapping = np.full((256,), masking_value, dtype=np.uint8)
         for k in mapping_dict.keys():
             mapping[k] = mapping_dict[k]
-        target_transform = LabelTransform(mapping)
 
         # make the subset of the dataset
-        self.target_transform = target_transform
+        self.target_transform = LabelTransform(mapping)
 
     def set_up_void_test(self):
         self.inverted_order[255] = 255

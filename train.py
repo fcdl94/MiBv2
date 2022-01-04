@@ -79,17 +79,18 @@ class Trainer:
             self.lkd_loss = KnowledgeDistillationLoss(alpha=opts.alpha)
 
         # ICARL
-        self.icarl_combined = False
-        self.icarl_only_dist = False
+        # self.icarl_combined = False
+        # self.icarl_only_dist = False
+        self.icarl = opts.icarl
         if opts.icarl:
-            self.icarl_combined = not opts.icarl_disjoint and self.model_old is not None
-            self.icarl_only_dist = opts.icarl_disjoint and self.model_old is not None
-            if self.icarl_combined:
-                self.licarl = nn.BCEWithLogitsLoss(reduction='mean')
-                self.icarl = opts.icarl_importance
-            elif self.icarl_only_dist:
-                self.licarl = IcarlLoss(reduction='mean', bkg=opts.icarl_bkg)
-        self.icarl_dist_flag = self.icarl_only_dist or self.icarl_combined
+            # self.icarl_combined = not opts.icarl_disjoint and self.model_old is not None
+            # self.icarl_only_dist = opts.icarl_disjoint and self.model_old is not None
+            # if self.icarl_combined:
+            #     self.licarl = nn.BCEWithLogitsLoss(reduction='mean')
+            #     self.icarl = opts.icarl_importance
+            # elif self.icarl_only_dist:
+            self.licarl = IcarlLoss(reduction='mean', bkg=opts.icarl_bkg)
+        # self.icarl_dist_flag = self.icarl_only_dist or self.icarl_combined
 
         self.ret_intermediate = self.lde or (opts.pod is not None)
 
@@ -98,7 +99,7 @@ class Trainer:
         self.thresholds, self.max_entropy = None, None
         if opts.pseudo:
             self.pseudo_labeling = "entropy"
-            self.threshold = 0.001
+            self.threshold = opts.threshold
             self.classif_adaptive_factor = True
             self.classif_adaptive_min_factor = 0.0
 
@@ -110,7 +111,7 @@ class Trainer:
             self.pod_apply = 'all'
             self.pod_deeplab_mask = False
             self.pod_deeplab_mask_factor = None
-            self.pod_options = {"switch": {"after": {"extra_channels": "sum", "factor": 0.0005, "type": "local"}}}
+            self.pod_options = {"switch": {"after": {"extra_channels": "sum", "factor": opts.pod_factor, "type": "local"}}}
             self.use_pod_schedule = True
             self.pod_interpolate_last = False
             self.pod_large_logits = False
@@ -118,7 +119,7 @@ class Trainer:
             self.deeplab_mask_downscale = False
             self.spp_scales = [1, 2, 4]
 
-        self.compute_model_old = (self.lde_flag or self.lkd_flag or self.icarl_dist_flag or
+        self.compute_model_old = (self.lde_flag or self.lkd_flag or self.icarl or
                                   self.pod is not None or self.pseudo_labeling is not None)
         self.compute_model_old = self.compute_model_old and self.model_old is not None
 
@@ -179,7 +180,6 @@ class Trainer:
         interval_loss = 0.0
         lkd = torch.tensor(0.)
         lde = torch.tensor(0.)
-        l_icarl = torch.tensor(0.)
         l_reg = torch.tensor(0.)
         pod_loss = torch.tensor(0.)
 
@@ -249,7 +249,7 @@ class Trainer:
                 outputs, features = model(images, ret_intermediate=self.ret_intermediate)
 
                 # xxx BCE / Cross Entropy Loss
-                if not self.icarl_only_dist:
+                if not self.icarl:
                     loss = criterion(outputs, labels)  # B x H x W
                 else:
                     # ICaRL loss -- unique CE+KD
@@ -259,14 +259,6 @@ class Trainer:
                     loss = classif_adaptive_factor * loss
 
                 loss = loss.mean()  # scalar
-
-                # xxx ICARL DISTILLATION
-                if self.icarl_combined:
-                    # tensor.narrow( dim, start, end) -> slice tensor from start to end in the specified dim
-                    n_cl_old = outputs_old.shape[1]
-                    # use n_cl_old to sum the contribution of each class, and not to average them (as done in our BCE).
-                    l_icarl = self.icarl * n_cl_old * self.licarl(outputs.narrow(1, 0, n_cl_old),
-                                                                  torch.sigmoid(outputs_old))
 
                 # xxx ILTSS (distillation on features or logits)
                 if self.lde_flag:
@@ -309,7 +301,7 @@ class Trainer:
                     )
 
                 # xxx first backprop of previous loss (compute the gradients for regularization methods)
-                loss_tot = loss + lkd + lde + l_icarl + pod_loss
+                loss_tot = loss + lkd + lde + pod_loss
 
             self.scaler.scale(loss_tot).backward()
 
@@ -320,8 +312,8 @@ class Trainer:
 
             epoch_loss += loss.item()
             reg_loss += l_reg.item() if l_reg != 0. else 0.
-            reg_loss += lkd.item() + lde.item() + l_icarl.item() + pod_loss.item()
-            interval_loss += loss.item() + lkd.item() + lde.item() + l_icarl.item()
+            reg_loss += lkd.item() + lde.item() + pod_loss.item()
+            interval_loss += loss.item() + lkd.item() + lde.item() + pod_loss.item()
             interval_loss += l_reg.item() if l_reg != 0. else 0.
 
             if tq is not None:
@@ -351,6 +343,7 @@ class Trainer:
         torch.distributed.reduce(reg_loss, dst=0)
 
         if distributed.get_rank() == 0:
+            print(distributed.get_world_size())
             epoch_loss = epoch_loss / distributed.get_world_size() / len(train_loader)
             reg_loss = reg_loss / distributed.get_world_size() / len(train_loader)
 
@@ -370,7 +363,7 @@ class Trainer:
         with torch.no_grad():
             for i, (images, labels) in enumerate(loader):
 
-                images = images.to(device, dtype=torch.float32)
+                images = images.to(device, dtype=torch.float)
                 labels = labels.to(device, dtype=torch.long)
 
                 with amp.autocast():

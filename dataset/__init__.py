@@ -11,7 +11,7 @@ def get_dataset(opts):
     """
 
     train_transform = transform.Compose([
-        transform.RandomResizedCrop(opts.crop_size, (0.5, 1)),
+        transform.RandomResizedCrop(opts.crop_size, (0.5, 1)),  # fixme Not sure about the right pars...
         # transform.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1),
         # this is like scaling the orig image -> Scale_{RRC} =  Crop_size / (Img_size * Scale_{R+C})
         transform.RandomHorizontalFlip(),
@@ -61,14 +61,12 @@ def get_dataset(opts):
 
     # Val is masked with 0 when label is not known or is old (masking=True, masking_value=0)
     val_dst = dataset(root=opts.data_root, step_dict=step_dict, train=False, transform=val_transform,
-                      idxs_path=path_base + f"/val-{opts.step}.npy", masking_value=masking_value,
-                      masking=not opts.no_mask, step=opts.step)
+                      masking_value=255, masking=False, step=opts.step)  # fixme...
 
     # Test is masked with 255 for labels not known and the class for old (masking=False, masking_value=255)
-    image_set = 'train' if opts.val_on_trainset else 'val'
-    test_dst = dataset(root=opts.data_root, step_dict=step_dict, train=opts.val_on_trainset, transform=test_transform,
-                       masking=False, masking_value=255,
-                       idxs_path=path_base + f"/test_on_{image_set}-{opts.step}.npy",  step=opts.step)
+    # image_set = 'train' if opts.val_on_trainset else 'val'
+    test_dst = dataset(root=opts.data_root, step_dict=step_dict, train=False, transform=test_transform,
+                       masking_value=255, masking=False, step=opts.step)
 
     return train_dst, val_dst, test_dst, labels_cum, len(labels_cum)
 

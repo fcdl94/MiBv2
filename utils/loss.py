@@ -68,10 +68,12 @@ class IcarlLoss(nn.Module):
         # replace ignore with numclasses + 1 (to enable one hot and then remove it)
         targets = F.one_hot(labels_new, inputs.shape[1] + 1).float().permute(0, 3, 1, 2)
         targets = targets[:, :inputs.shape[1], :, :]  # remove 255 from 1hot
-        if self.bkg:
-            targets[:, 1:output_old.shape[1], :, :] = output_old[:, 1:, :, :]
+
+        targets[:, 1:output_old.shape[1], :, :] = output_old[:, 1:, :, :]
+        if self.bkg != -1:
+            targets[:, 0, :, :] = self.bkg * targets[:, 0, :, :] + (1-self.bkg)*output_old[:, 0, :, :]
         else:
-            targets[:, :output_old.shape[1], :, :] = output_old
+            targets[:, 0, :, :] = torch.min(targets[:, 0, :, :], output_old[:, 0, :, :])
 
         # targets is B x C x H x W so shape[1] is C
         loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction='none')
