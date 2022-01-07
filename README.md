@@ -13,6 +13,10 @@ We still want to provide users implementations of:
 - [RECALL: Replay-based Continual Learning in Semantic Segmentation](https://github.com/LTTM/RECALL)
 - ADD Cityscapes and COCO datasets
 
+## WARNING 
+I'm having hard times replicating the 15-1 and 19-1 settings of the original paper. Currently, I think the main issue is related to Mixed Precision, as also identified in some issue of [PLOP](https://github.com/arthurdouillard/CVPR2021_PLOP). 
+Updates will follow.
+
 
 # Requirements
 To install the requirements, use the [requirements.txt](requirements.txt) file:
